@@ -5,6 +5,9 @@ import { PrismaClient } from '@prisma/client';
 import { createOpenAIEmbedding } from '@/lib/ai-service';
 import { SearchResult } from '@/lib/types';
 import { SYSTEM_PROMPT } from '@/lib/prompts';
+import { z } from 'zod';
+import { ChatCompletionMessageParam } from 'openai/resources/chat/completions.mjs';
+import { USED_GPT_MODEL } from '@/lib/constants';
 
 const prisma = new PrismaClient();
 
@@ -12,9 +15,21 @@ const openai = new OpenAI({
   apiKey: env.OPENAI_API_KEY,
 });
 
+const ChatUiMessage = z.object({
+  text: z.string(),
+  isUser: z.boolean(),
+});
+
+const ChatPostSchema = z.object({
+  userMessage: z.string(),
+  previousMessages: z.array(ChatUiMessage),
+});
+
 export async function POST(request: NextRequest) {
   try {
-    const { userMessage } = await request.json();
+    const { userMessage, previousMessages } = (await request.json()) as z.infer<
+      typeof ChatPostSchema
+    >;
     const limit = 5;
 
     // Create an embedding for the search query
@@ -32,18 +47,28 @@ export async function POST(request: NextRequest) {
 
     const context = searchResults.map((result) => result.content).join('\n\n');
 
+    const previousMessagesOpenAIType = previousMessages.map(
+      (message: z.infer<typeof ChatUiMessage>) => ({
+        role: message.isUser ? 'user' : 'assistant',
+        content: message.text,
+      }),
+    );
+
+    const messages = [
+      {
+        role: 'system',
+        content: SYSTEM_PROMPT,
+      },
+      ...previousMessagesOpenAIType,
+      {
+        role: 'user',
+        content: `Context: ${context}\n\nQuestion: ${userMessage}`,
+      },
+    ] as ChatCompletionMessageParam[];
+
     const stream = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content: `Context: ${context}\n\nQuestion: ${userMessage}`,
-        },
-      ],
+      model: USED_GPT_MODEL,
+      messages,
       stream: true,
     });
 

@@ -44,7 +44,10 @@ export function Chat() {
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userMessage: input }),
+          body: JSON.stringify({
+            previousMessages: messages,
+            userMessage: input,
+          }),
         });
 
         if (!response.ok) {
