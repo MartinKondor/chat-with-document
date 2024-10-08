@@ -1,0 +1,19 @@
+generator client {
+    provider        = "prisma-client-js"
+    binaryTargets   = ["native", "debian-openssl-1.1.x", "rhel-openssl-1.0.x"]
+    previewFeatures = ["postgresqlExtensions"]
+    output          = "../node_modules/.prisma/client"
+}
+
+datasource db {
+    provider   = "postgresql"
+    url        = env("POSTGRES_URL")
+    directUrl  = env("POSTGRES_URL_NON_POOLING")
+    extensions = [vector]
+}
+
+model SourceChunk {
+    id         String                 @id @default(cuid())
+    content    String
+    embeddings Unsupported("vector")?
+}

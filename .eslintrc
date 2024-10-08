@@ -1,0 +1,23 @@
+{
+  "extends": "next/core-web-vitals",
+  "plugins": [
+    "eslint-plugin-import",
+    "eslint-plugin-jsx-a11y",
+    "eslint-plugin-promise",
+    "eslint-plugin-react",
+    "eslint-plugin-react-hooks",
+    "eslint-plugin-simple-import-sort"
+  ],
+  "rules": {
+    // Promise
+    "promise/prefer-await-to-then": "warn",
+
+    // Import
+    "import/no-useless-path-segments": "error",
+    "import/newline-after-import": "error",
+
+    // Simple import sort
+    "simple-import-sort/imports": "error",
+    "simple-import-sort/exports": "error"
+  }
+}

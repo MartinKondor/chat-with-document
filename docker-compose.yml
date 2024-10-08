@@ -1,0 +1,21 @@
+services:
+  db:
+    build: .
+    environment:
+      POSTGRES_USER: postgresuser
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: postgresdb
+    ports:
+      - 54322:5432
+    networks:
+      - app_network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgresuser', '-d', 'postgresdb']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks:
+  app_network:
+    driver: bridge
