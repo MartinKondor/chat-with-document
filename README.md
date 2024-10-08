@@ -1,6 +1,6 @@
 # Chat With Documents
 
-<p align="center"><img src="docs/usage.gif" alt="Chat with documents" width="auto" height="852px" /></p>
+<p align="center"><img src="docs/usage.gif" alt="Chat with documents" width="auto" height="700px" /></p>
 
 ## Overview
 
