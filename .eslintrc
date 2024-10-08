@@ -18,6 +18,9 @@
 
     // Simple import sort
     "simple-import-sort/imports": "error",
-    "simple-import-sort/exports": "error"
+    "simple-import-sort/exports": "error",
+
+    // Use of any
+    "@typescript-eslint/no-explicit-any": "off"
   }
 }
