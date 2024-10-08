@@ -27,20 +27,17 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
     setUploading(true);
     try {
       for (const file of files) {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const content = e.target?.result as string;
-          const response = await fetch('/api/upload', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content, fileName: file.name }),
-          });
+        const formData = new FormData();
+        formData.append('file', file);
 
-          if (!response.ok) {
-            throw new Error('Upload failed');
-          }
-        };
-        reader.readAsDataURL(file);
+        const response = await fetch('/api/upload', {
+          method: 'PUT',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Upload failed');
+        }
       }
       setToast({ message: 'Files uploaded successfully', type: 'success' });
       onUploadComplete();

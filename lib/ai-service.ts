@@ -1,9 +1,11 @@
 import OpenAI from 'openai';
+import { env } from './env.mjs';
 
-export async function createOpenAIEmbedding(
-  openai: OpenAI,
-  text: string,
-): Promise<number[]> {
+const openai = new OpenAI({
+  apiKey: env.OPENAI_API_KEY,
+});
+
+export async function createOpenAIEmbedding(text: string): Promise<number[]> {
   try {
     const response = await openai.embeddings.create({
       model: 'text-embedding-ada-002',

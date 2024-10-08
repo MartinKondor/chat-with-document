@@ -1,57 +1,42 @@
 import { createOpenAIEmbedding } from '@/lib/ai-service';
-import { MAX_FILE_CHARACTER_LENGTH } from '@/lib/constants';
-import { chunkFile } from '@/lib/preparation';
 import { PrismaClient } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
-import { env } from '@/lib/env.mjs';
-import { z } from 'zod';
+import { MAX_FILE_SIZE } from '@/lib/constants';
+import { chunkFileFromStream } from '@/lib/preparation';
 
 const prisma = new PrismaClient();
 
-const UploadSchema = z.object({
-  content: z.string(),
-});
-
 export async function PUT(request: NextRequest) {
   try {
-    const { content } = UploadSchema.parse(await request.json());
+    const formData = await request.formData();
+    const file = formData.get('file') as File | null;
 
-    if (content.length > MAX_FILE_CHARACTER_LENGTH) {
+    if (!file) {
+      return NextResponse.json({ error: 'File is required' }, { status: 400 });
+    }
+
+    // Check file size
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        {
-          error: `File content must be under ${MAX_FILE_CHARACTER_LENGTH} characters`,
-        },
+        { error: 'A fájl mérete nem lehet nagyobb, mint 5 MB.' },
         { status: 400 },
       );
     }
 
-    if (!env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { error: 'OpenAI API key is required' },
-        { status: 400 },
-      );
-    }
+    const stream = file.stream();
+    const chunks = await chunkFileFromStream(stream, file.name);
 
-    const openai = new OpenAI({
-      apiKey: env.OPENAI_API_KEY,
-    });
-
-    // First chunk the content into smaller parts
-    const chunks = chunkFile(content);
-
-    // Then create embeddings for each chunk
+    // Create embeddings for each chunk
     const embeddings = await Promise.all(
       chunks
         .filter((chunk) => chunk.length > 0)
-        .map((chunk) => createOpenAIEmbedding(openai, chunk)),
+        .map((chunk) => createOpenAIEmbedding(chunk)),
     );
 
     // Remove all other embeddings
     await prisma.sourceChunk.deleteMany();
 
     // Use a transaction to ensure all insertions are successful
-    // NOTE: Ugly because Prisma does not support pgvector currently
     await prisma.$transaction(async (tx) => {
       for (let i = 0; i < chunks.length; i++) {
         await tx.$executeRaw`
@@ -75,6 +60,10 @@ export async function PUT(request: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+export async function POST() {
+  return NextResponse.json({});
 }
 
 export async function GET() {

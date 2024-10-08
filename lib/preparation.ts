@@ -2,109 +2,100 @@ import {
   TxtParentNodeWithSentenceNodeContent,
   split as splitToSentences,
 } from 'sentence-splitter';
-import {
-  MAX_CHUNK_CHARACTERS,
-  MAX_CHUNK_OVERLAP_CHARACTERS,
-} from './constants';
+import pdfParse from 'pdf-parse/lib/pdf-parse';
+import { MAX_CHUNK_CHARACTERS } from './constants';
 
-const parseSentences = (content: string) => {
-  const cleanedText = content.replace(/\n/g, ' ').replace(/ {2,}/g, ' ');
-  return splitToSentences(cleanedText)
-    .filter(
-      (sentence: TxtParentNodeWithSentenceNodeContent) =>
-        sentence.type === 'Sentence',
-    )
-    .map((sentence: TxtParentNodeWithSentenceNodeContent) => sentence.raw);
-};
+async function extractTextFromPDF(data: Buffer): Promise<string> {
+  const result = await pdfParse(data, {
+    pagerender: (pageData: any) => {
+      let render_options = {
+        normalizeWhitespace: false,
+        disableCombineTextItems: false,
+      };
 
-const chunkSingleSentence = (sentence: string): string[] => {
-  // Chunk a single sentence into smaller chunks by words
+      return pageData
+        .getTextContent(render_options)
+        .then(function (textContent: any) {
+          let lastY,
+            lastX,
+            text = '';
+          for (let item of textContent.items) {
+            if (lastY !== item.transform[5] || !lastY) {
+              text += '\n';
+            } else if (lastX !== undefined && item.transform[4] - lastX > 1) {
+              // Add space if there's a significant horizontal gap
+              text += ' ';
+            }
+            text += item.str;
+            lastY = item.transform[5];
+            lastX = item.transform[4] + item.width;
+          }
+          return text;
+        });
+    },
+    version: 'v2.0.550',
+  });
+  return result.text;
+}
+
+async function streamToBuffer(
+  readableStream: ReadableStream<Uint8Array>,
+): Promise<Buffer> {
+  const reader = readableStream.getReader();
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    chunks.push(value);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+async function extractTextFromStream(
+  readableStream: ReadableStream<Uint8Array>,
+  fileName: string,
+): Promise<string> {
+  const fileType = fileName.split('.').pop()?.toLowerCase();
+  const buffer = await streamToBuffer(readableStream);
+
+  switch (fileType) {
+    case 'pdf':
+      return extractTextFromPDF(buffer);
+    default:
+      throw new Error(`Unsupported file type: ${fileType}`);
+  }
+}
+
+function chunkMultipleSentences(sentences: string[]): string[] {
+  // Chunk multiple sentences together to create chunks containing multiple-sentences
+  // keep in mind the character limit
   const chunks: string[] = [];
-  const words = sentence.split(/\s+/);
   let currentChunk = '';
 
-  for (const word of words) {
-    if (currentChunk.length + word.length + 1 > MAX_CHUNK_CHARACTERS) {
-      chunks.push(currentChunk.trim());
-      currentChunk = word;
-    } else {
-      currentChunk += (currentChunk.length > 0 ? ' ' : '') + word;
-    }
-  }
-
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk.trim());
-  }
-
-  return chunks;
-};
-
-const chunkMultipleSentences = (sentences: string[]): string[] => {
-  const chunks: string[] = [];
-  let currentChunk: string[] = [];
-  let overlapText = '';
-
-  const addChunk = (chunk: string) => {
-    chunks.push(chunk);
-    const words = chunk.split(/\s+/);
-    overlapText = words.slice(-MAX_CHUNK_OVERLAP_CHARACTERS).join(' ');
-  };
-
   for (const sentence of sentences) {
-    if (sentence.length === 0) {
-      continue;
-    }
-
-    // In case of weirdly long sentences
-    if (sentence.length >= MAX_CHUNK_CHARACTERS) {
-      console.warn(
-        `Sentence is too long: ${sentence.length} characters, splitting it into smaller chunks by words.`,
-      );
-
-      const sentenceChunks = chunkSingleSentence(sentence);
-      for (const sentenceChunk of sentenceChunks) {
-        const currentChunkInOneString = currentChunk.join(' ');
-        if (
-          currentChunkInOneString.length + sentenceChunk.length + 1 >
-          MAX_CHUNK_CHARACTERS
-        ) {
-          if (currentChunk.length > 0) {
-            addChunk(currentChunkInOneString.trim());
-          }
-          currentChunk = [overlapText, sentenceChunk].filter(Boolean);
-        } else {
-          currentChunk.push(sentenceChunk);
-        }
-      }
-      continue;
-    }
-
-    const currentChunkInOneString = currentChunk.join(' ');
-    if (
-      currentChunkInOneString.length + sentence.length + 1 >
-      MAX_CHUNK_CHARACTERS
-    ) {
-      if (currentChunk.length > 0) {
-        addChunk(currentChunkInOneString.trim());
-      }
-      currentChunk = [overlapText, sentence].filter(Boolean);
+    if (currentChunk.length + sentence.length >= MAX_CHUNK_CHARACTERS) {
+      chunks.push(currentChunk.trim());
+      currentChunk = ' ' + sentence + ' ';
     } else {
-      currentChunk.push(sentence);
+      currentChunk += ' ' + sentence;
     }
-  }
-
-  if (currentChunk.length > 0) {
-    // Remove possible duplicated sentences
-    currentChunk = currentChunk.filter(
-      (sentence, index, self) => self.indexOf(sentence) === index,
-    );
-    addChunk(currentChunk.join(' ').trim());
   }
 
   return chunks;
-};
+}
 
-export const chunkFile = (content: string): string[] => {
-  const rawSentences = parseSentences(content);
-  return chunkMultipleSentences(rawSentences);
-};
+export async function chunkFileFromStream(
+  readableStream: ReadableStream<Uint8Array>,
+  fileName: string,
+): Promise<string[]> {
+  const content = await extractTextFromStream(readableStream, fileName);
+  const cleanedText = content.replace(/\n/g, ' ').replace(/\s{2,}/g, ' ');
+  const sentences = splitToSentences(cleanedText)
+    .filter((sentence) => sentence.type === 'Sentence')
+    .map((sentence: TxtParentNodeWithSentenceNodeContent) => sentence.raw);
+  return chunkMultipleSentences(sentences);
+}
