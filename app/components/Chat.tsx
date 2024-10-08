@@ -27,7 +27,7 @@ export function Chat() {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({ userMessage: input }),
       });
 
       if (!response.ok) {

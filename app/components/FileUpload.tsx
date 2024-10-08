@@ -33,14 +33,14 @@ export function FileUpload({ onUploadComplete }: FileUploadProps) {
           const response = await fetch('/api/upload', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content }),
+            body: JSON.stringify({ content, fileName: file.name }),
           });
 
           if (!response.ok) {
             throw new Error('Upload failed');
           }
         };
-        reader.readAsText(file);
+        reader.readAsDataURL(file);
       }
       setToast({ message: 'Files uploaded successfully', type: 'success' });
       onUploadComplete();
