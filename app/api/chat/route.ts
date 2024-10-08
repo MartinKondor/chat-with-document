@@ -32,8 +32,8 @@ export async function POST(request: NextRequest) {
 
     const context = searchResults.map((result) => result.content).join('\n\n');
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+    const stream = await openai.chat.completions.create({
+      model: 'gpt-4',
       messages: [
         {
           role: 'system',
@@ -44,10 +44,26 @@ export async function POST(request: NextRequest) {
           content: `Context: ${context}\n\nQuestion: ${userMessage}`,
         },
       ],
+      stream: true,
     });
 
-    const response = completion.choices[0].message.content;
-    return NextResponse.json({ response });
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content || '';
+            controller.enqueue(content);
+          }
+          controller.close();
+        },
+      }),
+      {
+        headers: {
+          'Content-Type': 'text/plain',
+          'Cache-Control': 'no-cache',
+        },
+      },
+    );
   } catch (error) {
     console.error('Chat error:', error);
     return NextResponse.json(

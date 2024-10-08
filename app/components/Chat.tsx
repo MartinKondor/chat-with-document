@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent } from './ui/card';
@@ -12,8 +12,9 @@ interface Message {
 
 export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState<string>('');
+  const [input, setInput] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -22,61 +23,97 @@ export function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, streamingMessage]);
 
-  const handleSendMessage = async () => {
-    if (input.trim() === '') {
-      return;
-    }
-
-    const userMessage: Message = { text: input, isUser: true };
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
-    setInput('');
-    setIsLoading(true);
-
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: input }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Chat request failed');
+  const handleSendMessage = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (input.trim() === '') {
+        return;
       }
 
-      const data = await response.json();
-      const botMessage: Message = { text: data.response, isUser: false };
-      setMessages((prevMessages) => [...prevMessages, botMessage]);
-    } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage: Message = {
-        text: 'An error occurred. Please try again.',
-        isUser: false,
-      };
-      setMessages((prevMessages) => [...prevMessages, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      const userMessage: Message = { text: input, isUser: true };
+      setMessages((prevMessages) => [...prevMessages, userMessage]);
+      setInput('');
+      setIsLoading(true);
+      setStreamingMessage('');
+
+      let completeStreamedMessage = '';
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userMessage: input }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Chat request failed');
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error('Failed to get response reader');
+        }
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          const chunk = new TextDecoder().decode(value);
+          completeStreamedMessage += chunk;
+          setStreamingMessage((prev) => prev + chunk);
+        }
+
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          { text: completeStreamedMessage, isUser: false },
+        ]);
+      } catch (error) {
+        console.error('Error sending message:', error);
+        const errorMessage: Message = {
+          text: 'An error occurred. Please try again.',
+          isUser: false,
+        };
+        setMessages((prevMessages) => [...prevMessages, errorMessage]);
+      } finally {
+        setIsLoading(false);
+        setStreamingMessage('');
+      }
+    },
+    [input],
+  );
 
   return (
     <div className="space-y-4">
       <div className="h-[60vh] overflow-y-auto space-y-4 p-4 border rounded">
-        {messages.map((message, index) => (
-          <Card
-            key={index}
-            className={message.isUser ? 'ml-auto' : 'mr-auto bg-gray-200'}
-          >
+        {messages.map(
+          (message, index) =>
+            message.text.length > 0 && (
+              <Card
+                key={index}
+                className={message.isUser ? 'ml-auto' : 'mr-auto bg-gray-200'}
+              >
+                <CardContent className="p-4">
+                  <p className="text-sm text-gray-500">
+                    {message.isUser ? '😀 You' : '🤖 Bot'}
+                  </p>
+                  <p>{message.text}</p>
+                </CardContent>
+              </Card>
+            ),
+        )}
+        {streamingMessage && streamingMessage.length > 0 && (
+          <Card className="mr-auto bg-gray-200">
             <CardContent className="p-4">
-              <p className="text-sm text-gray-500">
-                {message.isUser ? '😀 You' : '🤖 Bot'}
-              </p>
-              <p>{message.text}</p>
+              <p className="text-sm text-gray-500">🤖 Bot</p>
+              <p>{streamingMessage}</p>
             </CardContent>
           </Card>
-        ))}
-        {isLoading && (
+        )}
+        {isLoading && !streamingMessage && (
           <Card className="mr-auto bg-gray-200">
             <CardContent className="p-4">
               <p className="text-sm text-gray-500">🤖 Bot</p>
@@ -93,7 +130,7 @@ export function Chat() {
             setInput(e.target.value)
           }
           onKeyPress={(e: React.KeyboardEvent<HTMLInputElement>) =>
-            e.key === 'Enter' && handleSendMessage()
+            e.key === 'Enter' && handleSendMessage(e)
           }
           placeholder="Type your message..."
         />
