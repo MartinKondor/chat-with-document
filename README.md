@@ -1,5 +1,7 @@
 # Chat With Documents
 
+<p align="center"><img src="docs/usage.gif" alt="Chat with documents" width="auto" height="852px" /></p>
+
 ## Overview
 
 Upload one or multiple sources (including .pdf files) and chat with the contents of the documents using OpenAI models.
